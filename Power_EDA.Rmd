@@ -1,0 +1,804 @@
+---
+title: "北市電力分析"
+output: 
+  flexdashboard::flex_dashboard:
+    source_code: embed
+---
+
+```{r setup, include=FALSE}
+library(flexdashboard)
+library(data.table)
+library(dplyr)
+library(tidyr)
+library(stringr)
+library(DT)
+library(ggthemes)
+library(ggplot2)
+library(plotly)
+library(highcharter)
+c("#A6CEE3","#1F78B4","#B2DF8A","#33A02C","#FB9A99","#E31A1C","#FDBF6F","#FF7F00","#CAB2D6","#6A3D9A") -> col.raw
+cbind(grDevices::col2rgb(col.raw),3) -> col
+data_cluster <- fread('./20160613_data_cluster.csv')
+radar.data <- read.csv('./20160613_Radar_plot.csv') %>% 
+  mutate_each(funs(round(.,digits=2)),-index) 
+radar.data$mean <- rowMeans(radar.data[,-1])
+data <- fread('iconv -f big5 -t utf8 ./20160426_data.csv')
+```
+
+
+目的 {#motivation-and-goal }
+======
+<div align = "center">
+<h1> 限電警戒！全台用電量持續上升！ </h1>
+</div>
+
+
+<ppp>[全臺／夏至熱呼呼！　尖峰用電創史上第二高(20160622)](http://times-bignews.com/content.php?t=39051#)，由於實際備轉容量為126.4萬瓩，備轉容量率僅3.59％，台電也亮起了象徵「供電警戒」的橘燈。而用來衡量電力系統供電可靠度之指標--[備轉容量率](http://www.taipower.com.tw/content/new_info/new_info-c33.aspx?LinkID=13)，代表著全台已達限電警戒橘燈的標準。雖然經濟部長李世光曾經說過[「兩年不缺電」](http://udn.com/news/story/1/1731217-%E4%B8%8D%E7%BC%BA%E9%9B%BB%E6%B2%92%E6%BB%BF%E6%9C%88%E5%B0%B1%E6%94%B9%E5%8F%A3-%E6%A0%B8%E7%B5%82%E6%88%B0%E7%A5%9E%E8%A6%81%E6%9D%8E%E4%B8%96%E5%85%89%E7%9F%A5%E6%89%80%E9%80%B2%E9%80%80)，但近期他改口表示，供電的確吃緊；至於今夏能否保證不跳電，他也不承諾，只說：「全世界的工程沒有百分之百。」。李世光上任前，在5月初拜會工商團體時曾表示，今、明兩年都不會有缺電問題；但今天再被問及相同議題，未再對不缺電掛保證。對於電價議題，李世光也改口說：「基本民生電價沒有要漲價。」一改過去「基本度數以下」不漲價的說法。李世光指出，依照現行法規，10月才會調整電價，目前沒有調整規劃。</ppp>
+
+<div align = "center">
+<h1> 非核家園？ </h1>
+</div>
+
+<ppp>
+在全台用電量不斷上升、即將面臨限電的情況下，國人的生活、工作環境勢必受到極大的影響。新政府於2016年5月20日正式走馬上任，在電力政策上提出了「2025年達成非核家園」的政見，計畫中指出政府希望透過尋找替代能源、提升發電效率、節約能源、產業結構調整和電業自由化，來達到台灣於2025年可以不再依賴核能發電，並且核ㄧ、核二、核三廠可以如期除役。但是，為了解決用電量的問題，行政院表示「不排除重啟核一」，引發外界質疑政府的「非核家園」主張，用電量攀升也產生了許多社會議題的討論。無核家園都是國人共同期待的美好環境。為了達成此願景，[節電、火電、綠電是達成非核家園的三條路徑](http://news.ltn.com.tw/news/politics/paper/999816)，三路並進補足核電缺口及滿足需求成長，其中節電是最重要策略。</ppp>
+
+<div align = "center">
+<h1> 節電？從何節起？ </h1>
+</div>
+
+<ppp>節電的首要目標對象是用電大戶。目前已知的用電大戶不外乎：政府機關、公營事業、大專院校，政府已有許多具有[強制能力的法規](http://www.rootlaw.com.tw/LawContent.aspx?LawID=A040100150001900-0951229)可以針對用電大戶限電。[經長：真要限電，將先從工業大戶開始，盡量不動民生用電](http://www.thenewslens.com/article/15447)，對於用電大戶，如工業用電，已有很完善的限電措施。那麼民生用電呢？民生用電的節電通常都是以宣導的方式，希望國人可以減少民生用電。但是，未必每個地區的用電量狀況皆會一致，勢必會有某些地區用電量較高、其他地區的用電量較低的狀況，未必每個地方都需要加強宣導節電的概念。而過去已有相關的研究針對 [台灣鄉鎮區用電情況](http://www.thenewslens.com/article/21324) 進行了解。發現到，如：前20名鄉鎮區主要集中在中南部，其中高雄前金區和新興區分居第1、2名，臺南市和臺中市也有多座鄉鎮區榜上有名。對於一般民眾來說，我們能貢獻的部分只有「節約能源」，故了解台灣整體的用電狀況為首要之急，透過統計上的方法將村里分群，在將各群的用電輪廓描繪出來，進一步推論並比較其用電量高低的原因為何。</ppp>
+
+<div align = "center">
+<h1> 那我們到底要來分析什麼？ </h1>
+</div>
+
+<ppp>
+過去的研究大多著重在 __地區與用電量的關係__ ，找出用電量高的地方。而本專案想要帶領大家一起深入研究： __用電量與人口特性的關係__ ，針對台北市地區深入研究，找出用電量高的村里具有什麼樣的人口特性？你是否剛好符合這些人口特性呢？你瞭解台北市各鄉鎮各村里的用電概況嗎？我們又該如何對台北市的各個村里的用電做出有效的評估？是不是有隱藏了不為人知的現象影響著台北市的用電量？是否台北市各個角落有著特別的用電群體，並且自成一格的存在於整個大台北地區而不被發現呢？<br>
+此次分析將針對這些相關議題，且使用政府開放資料做實際的分析與探索。此研究較具有挑戰的地方在於 __需要整合不同面向的資料來源__ (如：經濟、人口、住宅...等等)，激盪出各方資料的火花，促進社會公益，提供民生用電限電的對象之參考依據與用電量有關的人口特性。</ppp>
+
+<br>
+
+- 參考文獻：
+    - 李安妮、侯仁義、柯亮群（2010），能源消費及節能意識之性別差異分析，中華民國能源經濟學會CAEE
+
+
+資料收集與清理 {#data}
+========
+
+
+整理有關人口特性相關的Open Data，將以下不同來源的資料按照村里進行串檔(JOIN)：
+
+- [台電電力資料](http://www.taipower.com.tw/content/announcement/ann01.aspx)
+- [各村里綜合所得稅所得總額](http://data.gov.tw/node/17983)
+- [各村里戶籍人口統計月報表](http://data.gov.tw/node/8411)
+- [各村里教育程度資料](http://data.gov.tw/node/8409)
+
+
+Note 1: 因為資料的時間涵蓋範圍不同，本研究取2014年進行分析(除所得資料未涵蓋，其他皆有）。
+
+Note 2: 因各村里綜合所得稅總和僅有2012年份的資料，假設2012年與2014年個村裡綜合所得表現一致進行推估，與其他資料進行串檔。
+
+Note 3: 各村里教育程度資料僅有年資料，雖然沒有月資料，但教育程度不會因為月份不同而有太大的改變，因此我們將2012教育程度年資料作為月資料的推估。
+
+Note 4: 台電電力資料記錄住商混合用電量，期待未來台電能釋出住宅用電量的相關資料。
+
+
+<h2> [資料長相](#clustering) </h2>
+
+- 用電量資料取自104年7~8月（因需與其他資料來源年份對齊）
+- <h3>與電力相關的指標</h3>
+    - 經濟能力：綜合所得中位數_log
+    - 平均教育程度：教育程度（非義務教育就讀幾年，碩博設六年、大學設四年）
+    - 有偶比例：婚姻狀態（有偶人數/青年以上人數）
+    - 性別比：女性人數/男性人數
+    - 老人比例：扶老比_log（60歲以上的人口數/20~60歲人口數） 60up/(20~60)
+    - 用電量多寡：每戶平均用電量_log（取Log為解決右偏資料進行[0,1]標準化所碰到的問題）
+
+- <div align="center"> <img src="datascource.png" width=1100 height=500></div>
+
+- <div align="center"> <img src="datajoin.png" width=1100 height=500></div>
+
+
+群集分析 {#preliminary}
+=======
+
+Column {.tabset .tabset-fade}
+-------------------------------------
+
+
+### 第1群
+
+```{r}
+radar.name <- radar.data$index
+highchart() %>% 
+  hc_chart(polar = TRUE, type = "line") %>% 
+  hc_title(text = "第1群 : 高扶老比族群(銀髮族群)") %>% 
+  hc_xAxis(categories = radar.name,
+           tickmarkPlacement = 'on',
+           lineWidth = 0) %>% 
+  hc_yAxis(gridLineInterpolation = 'polygon',
+           lineWidth = 0,
+           min = 0, max = 1) %>% 
+  hc_series(
+    list(
+      name = "第1群 - 高扶老比族群(銀髮族群)",
+      data = radar.data[,c(2)],
+      pointPlacement = 'on',color=col.raw[1]),
+    list(
+      name = "各群平均",
+      data = radar.data[,c(10)],
+      pointPlacement = 'on',color='#474747')
+    )
+```
+
+### 第2群
+
+```{r}
+highchart() %>% 
+  hc_chart(polar = TRUE, type = "line") %>% 
+  hc_title(text = "第2群：已婚之高收入知識份子族群") %>% 
+  hc_xAxis(categories = radar.name,
+           tickmarkPlacement = 'on',
+           lineWidth = 0) %>% 
+  hc_yAxis(gridLineInterpolation = 'polygon',
+           lineWidth = 0,
+           min = 0, max = 1) %>% 
+  hc_series(
+    list(
+      name = "第2群：已婚之高收入知識份子族群",
+      data = radar.data[,c(3)],
+      pointPlacement = 'on',color=col.raw[2]),
+    list(
+      name = "各群平均",
+      data = radar.data[,c(10)],
+      pointPlacement = 'on',color='#474747')
+    )
+```
+
+### 第3群
+
+```{r}
+highchart() %>% 
+  hc_chart(polar = TRUE, type = "line") %>% 
+  hc_title(text = "第3群：高知識份子小康家庭族群") %>% 
+  hc_xAxis(categories = radar.name,
+           tickmarkPlacement = 'on',
+           lineWidth = 0) %>% 
+  hc_yAxis(gridLineInterpolation = 'polygon',
+           lineWidth = 0,
+           min = 0, max = 1) %>% 
+  hc_series(
+    list(
+      name = "第3群：高知識份子小康家庭族群",
+      data = radar.data[,c(4)],
+      pointPlacement = 'on',color=col.raw[3]),
+    list(
+      name = "各群平均",
+      data = radar.data[,c(10)],
+      pointPlacement = 'on',color='#474747')
+    )
+```
+
+### 第4群
+
+```{r}
+highchart() %>% 
+  hc_chart(polar = TRUE, type = "line") %>% 
+  hc_title(text = "第4群 : 低收入單身男性族群") %>% 
+  hc_xAxis(categories = radar.name,
+           tickmarkPlacement = 'on',
+           lineWidth = 0) %>% 
+  hc_yAxis(gridLineInterpolation = 'polygon',
+           lineWidth = 0,
+           min = 0, max = 1) %>% 
+  hc_series(
+    list(
+      name = "第4群 : 低收入單身男性族群",
+      data = radar.data[,c(5)],
+      pointPlacement = 'on',color=col.raw[4]),
+    list(
+      name = "各群平均",
+      data = radar.data[,c(10)],
+      pointPlacement = 'on',color='#474747')
+    )
+```
+
+### 第5群
+
+```{r}
+highchart() %>% 
+  hc_chart(polar = TRUE, type = "line") %>% 
+  hc_title(text = "第5群 : 單身小資女族群") %>% 
+  hc_xAxis(categories = radar.name,
+           tickmarkPlacement = 'on',
+           lineWidth = 0) %>% 
+  hc_yAxis(gridLineInterpolation = 'polygon',
+           lineWidth = 0,
+           min = 0, max = 1) %>% 
+  hc_series(
+    list(
+      name = "第5群 : 單身小資女族群",
+      data = radar.data[,c(6)],
+      pointPlacement = 'on',color=col.raw[5]),
+    list(
+      name = "各群平均",
+      data = radar.data[,c(10)],
+      pointPlacement = 'on',color='#474747')
+    )
+```
+
+### 第6群
+
+```{r}
+highchart() %>% 
+  hc_chart(polar = TRUE, type = "line") %>% 
+  hc_title(text = "第6群") %>% 
+  hc_xAxis(categories = radar.name,
+           tickmarkPlacement = 'on',
+           lineWidth = 0) %>% 
+  hc_yAxis(gridLineInterpolation = 'polygon',
+           lineWidth = 0,
+           min = 0, max = 1) %>% 
+  hc_series(
+    list(
+      name = "第6群 ",
+      data = radar.data[,c(7)],
+      pointPlacement = 'on',color=col.raw[6]),
+    list(
+      name = "各群平均",
+      data = radar.data[,c(10)],
+      pointPlacement = 'on',color='#474747')
+    )
+```
+
+
+### 第7群
+
+```{r}
+highchart() %>% 
+  hc_chart(polar = TRUE, type = "line") %>% 
+  hc_title(text = "第7群") %>% 
+  hc_xAxis(categories = radar.name,
+           tickmarkPlacement = 'on',
+           lineWidth = 0) %>% 
+  hc_yAxis(gridLineInterpolation = 'polygon',
+           lineWidth = 0,
+           min = 0, max = 1) %>% 
+  hc_series(
+    list(
+      name = "第7群",
+      data = radar.data[,c(8)],
+      pointPlacement = 'on',color=col.raw[7]),
+    list(
+      name = "各群平均",
+      data = radar.data[,c(10)],
+      pointPlacement = 'on',color='#474747')
+    )
+```
+
+### 第8群
+
+```{r}
+highchart() %>% 
+  hc_chart(polar = TRUE, type = "line") %>% 
+  hc_title(text = "第8群") %>% 
+  hc_xAxis(categories = radar.name,
+           tickmarkPlacement = 'on',
+           lineWidth = 0) %>% 
+  hc_yAxis(gridLineInterpolation = 'polygon',
+           lineWidth = 0,
+           min = 0, max = 1) %>% 
+  hc_series(
+    list(
+      name = "第8群",
+      data = radar.data[,c(9)],
+      pointPlacement = 'on',color=col.raw[8]),
+    list(
+      name = "各群平均",
+      data = radar.data[,c(10)],
+      pointPlacement = 'on',color='#474747')
+    )
+```
+
+### Summary
+
+```{r}
+data_cluster %>% 
+  group_by(cluster) %>% 
+  tally %>% 
+  arrange(desc(n)) %>% 
+  as.data.frame() %>% 
+  datatable()
+
+```
+
+
+Column 
+-------------------------------------
+
+### 分群結果
+
+[分群 vs 村里地圖在這裡找](#clustering)<br>
+[村里的各項指標資料在這裡找](#clustering)
+
+
+<pp>
+__第一群：高扶老比族群(銀髮族群)__
+<br><br>
+根據雷達圖的指標顯示，這個族群同時具備了低於平均水平的所得、教育程度、有偶比、女男比，而具備了較高的扶老比，因此我們推測此族群為老年人口相對較多的區域。在其他指標中，低於平均水平的所得水準可能也受老年人口較多的影響，多數都已退休，使得整體平均所得相對拉低；又教育程度的可能原因為，這群老人家在求學階段的教育環境並無今日榮景，學校相對較少亦較競爭，並非人人都有機會唸書；有偶比與女男比較低的狀況可能為該地區多為單身男性。對於這樣的族群輪廓，顯示出其用電量相對低於平均用電量，我們推論可能原因為老人家的節儉觀念，使得其對於許多高耗電量的家電用品依賴性相對較低，例如：為了節省電費以電扇代替冷氣等。
+<br><br>
+分布於何處？
+<br><br>
+北投區大屯里、泉源里、湖山里等，士林區洲美里、平等里、溪山里等，大同區臨江里、國順里等，萬華區忠勤里、忠德里、榮德里等，信義區黎安里等分布於此群中。臺北市最老的社區 -- 南機場社區座落於萬華區忠勤里南機場夜市旁，南機場社區約有6000多位居民，其中65歲以上的老年人口約有1500位，相對於夜晚人聲鼎沸的南機場夜市，夜市旁的國宅公寓，居住了上百位孤苦無依的獨居老人，生活資源的匱乏，尚待政府制定相對因應的政策，來迎接這高齡化社會所帶來影響甚巨的負面影響。在此群中，北投區與士林區的里多數座落於大屯山周圍，此處非位於都市核心地區，學區亦非明星學區，因此可能致使老年人口比例相對較高。萬華區亦有數個里位於此群中，萬華區多老舊公寓國宅，且根據政府統計，萬華區為臺北市十二個行政區中人口老化指數最高的區，根據統計，萬華區102年底的老年人口比率為15.67%，約有3萬312人，儘管老年人的人口數還略輸大安區，但「人口老化指數」卻高達133.06%，在老人多、幼童少的狀況之下，仍是台北市最老的行政區。[資料來源](http://www.nownews.com/n/2014/06/16/1280464)
+<br><br>
+__第二群：已婚之高收入知識份子族群__
+<br><br>
+根據分群結果顯示：第二群的指標特色主要以高教育程度、高所得、高有偶比等特徵為主，雖然用電量高於平均但並沒有明顯地突出，其與第三群輪廓相似，唯一顯著不同的地方在於其扶老比較低，故我們將此一族群推測為扶養壓力較小且教育程度高的已婚高收入知識份子族群。
+<br><br>
+分布於何處？
+<br><br>
+此群主要分布以內湖區為主，包含大湖里、三重里、南湖里、金湖里，以及文山區的政大里，而該群在內湖區的分布緊依內湖科技園區，許多人才與經濟能力較佳的家庭多居住於該地區，且特性為扶老比低。內湖區為台北市中居住環境相對較佳的地帶，而文山區政大里為一明星學區，包括國立政治大學、政大附中等，許多教授、行政人員與公務人員多居住於附近。該群收入普遍較為豐厚，地點座落於一般住宅地區，非位於商辦地帶或繁華鬧區，其用電量高於平均。
+<br><br>
+__第三群 : 高知識份子小康家庭族群__
+<br><br>
+顧名思義，此族群特色在於其所得、教育程度皆明顯高於臺北市整體的平均指數。同時，些微高於平均的扶老比指數，亦可以凸顯這個族群有較高的能力去照顧家中的長輩。
+<br><br>
+分布於何處？
+<br><br>
+這個族群主要士林區翠山里、松山區精忠里、信義區新仁里、半個大安區與中正區南門里。
+<br><br>
+松山區精忠里，為全台灣[最有錢的里](http://news.cts.com.tw/cts/general/201010/201010120583794.html)，信義區新仁里及大安區等都是台北市生活品質與水準較高的村里，又士林區翠山里隸屬臺北市士林區轄治，位於外雙溪東方，大崙尾山山腰，面積1.6092平方公里，社區傍溪依山興建，風景秀麗，林木蓊鬱蒼翠，蟲吟蝶舞，綠意盎然，面對陽明山之秀峰，岡巒起伏，騁目遠眺，視野廣闊，大崙山區有豐富之自然動植物生態資源，一年四季各有特色，鄰近風景名勝甚多，中央社區係於民國62年(公元1973年)由行政院人事行政局開發興建，配售予中央政府各部會及國立大學公教人數居住，現均已退休多年，居民教育水準甚高，均為大學或專科以上程度，高普考試及格之公務人員。(資料來源：臺北市士林區翠山里辦公處)；聚集眾多高知識份子的士林區翠山里，其中包含至善國中、衛理女中、東吳大學等學校。
+根據分析結果顯示，此群的用電量高於台北市整體平均用電，此指在臺北市各個生活品質高、教育機能亦不錯的地區有著高於平均的用電量？一般而言，高知識份子相對於社會議題會較關注，但在用電量上無法獲得佐證。
+<br><br>
+__第四群：低收入單身男性族群__
+<br><br>
+根據雷達圖，我們可以發現此群特色為男性比例稍高於女性、教育程度與所得相對低於平均水準，且單身的比例亦相對較高，扶老比落於整體平均值。此群的用電量低於北市平均，此群多分布在台北市較外圍行政區的縣市邊界上，房價相對台北市市中心地區稍微低一些，是所得相對較低的族群可以負擔的價格，教育程度較低可能與人口結構關聯性較高，扶老比落於整體平均水準，顯示老年人口在此群仍佔有一定比例，可能使得教育程度整體平均被些微下拉。相較於第一群的整體輪廓而言非常類似，但扶老比相對較低可能為影響戶均用電量相較稍高一些的原因之一。
+<br><br>
+分布於何處？
+萬華區錦德里、華中里等，士林區社子里、葫蘆里等，大同區老師里、蓬萊里等，南港區舊莊里等皆落於此群中。萬華區為台北市老化指數最高的地區，與第一群的狀況類似，老年人口普遍生活節儉，故用電量相對較沒這麼高。社子島所涵蓋的里亦落於此群中，社子島是一個天然生成的滯洪區，又因區域發展、地方建設等因素，被劃定為農業或綠地用地不得做任何都市發展計劃之用，加上基隆河截彎取直的防洪整治工程完工與高速公路的興建，社子島的地方發展也明顯有了堤內與堤外地區的分野和落差(資料來源：林素雯（2009）。社子島：社區？社群？還是地方社會？。東吳大學人文社會學院第26屆系際學術研討會 )。如今社子島 95% 的房子都是違建，且蓋到五樓就是「最高地標」；不僅如此，社子島上多是因禁建而缺水、缺電的住戶，留下來的居民幾乎都是弱勢。[資料來源](https://buzzorange.com/2016/02/22/about-shezidevelopment/)，此特色亦反映再分群雷達圖中：教育程度與所得相對較低。
+<br><br>
+__第五群：單身小資女族群__
+<br><br>
+此群特色在於所得相對較低與女男比與用電量相較高，並且有偶比例低於台北市平均，故我們將其定義為單身小資女。而由分析結果指出，此族群對於用電的使用量高於整體平均，在相關文獻指出，女性對居家設備及家電的使用性依賴性高且喜愛烹煮食物(經濟部文章已有實證此現象)。
+<br><br>
+分布於何處？
+<br><br>
+此族群分布於台北市中山區中，中山北路一段至三段的周圍鄰里，為一住商混合區，包含圓山里、晴光里、聚盛里等。由於台電的用電量資料為住商混合資料，中山北路沿路上有許多商辦大樓，故此群用電量較高可能與其有關。此一區域的戶籍人口資料顯示女性多於男性，由於目前已有文獻證實，女性對於家電依賴性高於男性，又單身人數較多且收入相對較低，小資女們往往為了節省開銷而選擇自己開伙，且多數家電皆為高耗電量用品，使得此群的用電量相對其他群為最高。
+</pp>
+
+分群比較 {#clustering .storyboard}
+=======
+
+
+### 原始資料型態
+
+```{r width = 3}
+data %>% head
+```
+
+### 資料加工與指標定義
+
+```{r}
+data %>% 
+  filter(統計年月 == c(10407)) %>% 
+  select(-c(統計年月,縣市)) %>% 
+  group_by(行政區域) %>% 
+  summarise_each(funs(mean(.))) %>% 
+  select(行政區域,每戶平均用電度數,
+         女性比例, 男性比例,
+         少年人口比例,青年人口比例,壯年人口比例,老年人口比例,總人數,有偶人數, ## 有偶比例
+         綜合所得中位數, 大學以上比例, 大學比例, 大學以下比例) %>% 
+  mutate(扶老比 = (1-青年人口比例-壯年人口比例-少年人口比例)/(青年人口比例+壯年人口比例),
+         有偶比例 = 有偶人數/((1-少年人口比例)*總人數),
+         平均教育程度 = 大學以上比例*6+大學比例*4+大學以下比例*0,
+         女男比 = round(女性比例/男性比例,4)) %>% 
+  select(行政區域,綜合所得中位數,平均教育程度,有偶比例,女男比,扶老比,每戶平均用電度數) %>%
+  mutate_each(funs(scale(.)),-行政區域)  -> data.h
+
+
+data %>% 
+  filter(統計年月 == c(10407)) %>% 
+  select(-c(統計年月,縣市)) %>% 
+  group_by(行政區域) %>% 
+  summarise_each(funs(mean(.))) %>% 
+  select(行政區域,每戶平均用電度數,
+         女性比例, 男性比例,
+         少年人口比例,青年人口比例,壯年人口比例,老年人口比例,總人數,有偶人數, ## 有偶比例
+         綜合所得中位數, 大學以上比例, 大學比例, 大學以下比例) %>% 
+  mutate(扶老比 = (1-青年人口比例-壯年人口比例-少年人口比例)/(青年人口比例+壯年人口比例),
+         有偶比例 = 有偶人數/((1-少年人口比例)*總人數),
+         平均教育程度 = 大學以上比例*6+大學比例*4+大學以下比例*0,
+         女男比 = round(女性比例/男性比例,4)) %>% 
+  select(行政區域,綜合所得中位數,平均教育程度,有偶比例,女男比,扶老比,每戶平均用電度數) -> data.f
+
+colnames(data.f)[1] <- 'id'
+colnames(data_cluster)[1] <- 'id'
+
+data_cluster %>% 
+  as.data.frame() %>% 
+  DT::datatable(
+    colnames = c('分群結果' = 'cluster'),
+    filter = 'top',
+    options = list(pageLength = 20)) %>% 
+  formatRound(2:7,digits = 2)
+```
+
+
+
+### 雷達圖堆疊
+
+```{r}
+highchart() %>% 
+  hc_chart(polar = TRUE, type = "line") %>% 
+  hc_xAxis(categories = radar.name,
+           tickmarkPlacement = 'on',
+           lineWidth = 0) %>% 
+  hc_yAxis(gridLineInterpolation = 'polygon',
+           lineWidth = 0,
+           min = 0, max = 1) %>% 
+  hc_series(
+    list(
+      data = radar.data[,c(2)],
+      pointPlacement = 'on',color=col.raw[1]),
+    list(
+      data = radar.data[,c(3)],
+      pointPlacement = 'on',color=col.raw[2]),
+    list(
+      data = radar.data[,c(4)],
+      pointPlacement = 'on',color=col.raw[3]),
+    list(
+      data = radar.data[,c(5)],
+      pointPlacement = 'on',color=col.raw[4]),
+    list(
+      data = radar.data[,c(6)],
+      pointPlacement = 'on',color=col.raw[5]),
+    list(
+      data = radar.data[,c(7)],
+      pointPlacement = 'on',color=col.raw[6]),
+    list(
+      data = radar.data[,c(8)],
+      pointPlacement = 'on',color=col.raw[7]),
+    list(
+      data = radar.data[,c(9)],
+      pointPlacement = 'on',color=col.raw[8]),
+    list(
+      name = "各群平均",
+      data = radar.data[,c(10)],
+      pointPlacement = 'on',color='#474747'))
+  
+```
+
+
+### 第5群(高) vs 第1群(低)
+
+```{r}
+highchart() %>% 
+  hc_chart(polar = TRUE, type = "line") %>% 
+  hc_title(text = "第5群 vs 第1群") %>% 
+  hc_xAxis(categories = radar.name,
+           tickmarkPlacement = 'on',
+           lineWidth = 0) %>% 
+  hc_yAxis(gridLineInterpolation = 'polygon',
+           lineWidth = 0,
+           min = 0, max = 1) %>% 
+  hc_series(
+    list(
+      name = "第5群 - 單身小資女族群",
+      data = radar.data[,c(6)],
+      pointPlacement = 'on',color=col.raw[5])
+    ,
+    list(
+      name = "第1群 - 高扶老比族群(銀髮族群)",
+      data = radar.data[,c(2)],
+      pointPlacement = 'on',color=col.raw[1]))
+```
+
+***
+<pp>
+第一群與第五群用電量互有高低，我們從幾個顯著有差異的指標下去觀察發現，用電量較低的第一群男性比例較高，而用電量較高的第五群女性比例較高，在先前群集分析時已有介紹相關文獻對於女性用電量較高的相關研究，而銀髮族的節儉觀念亦可以推測該群用電量較低的原因。地點分布方面也可能為造成兩群用電量差異的原因，第一群的銀髮族群多分布在台北市與新北市交界的地區，例如：萬華區、北投區、士林區等，而第五群的小資女族群集中分佈在中山區，而中山區為台北市黃金地段之一，眾多的商辦大樓亦可能為導致該群用電量較高的因素之一。
+</pp>
+
+### 第2群(高) vs 第1群(低)
+
+```{r}
+highchart() %>% 
+  hc_chart(polar = TRUE, type = "line") %>% 
+  hc_title(text = "第2群 vs 第1群") %>% 
+  hc_xAxis(categories = radar.name,
+           tickmarkPlacement = 'on',
+           lineWidth = 0) %>% 
+  hc_yAxis(gridLineInterpolation = 'polygon',
+           lineWidth = 0,
+           min = 0, max = 1) %>% 
+  hc_series(
+    list(
+      name = "第2群 - 已婚之高收入知識份子族群",
+      data = radar.data[,c(3)],
+      pointPlacement = 'on',color=col.raw[2])
+    ,
+    list(
+      name = "第1群 - 高扶老比族群(銀髮族群)",
+      data = radar.data[,c(2)],
+      pointPlacement = 'on',color=col.raw[1]))
+```
+
+***
+<pp>
+已婚之高收入知識份子族群與高扶老比族群的比較可以明顯得到一個結論：內外分布明顯。台北市如同一顆心臟，而高扶老比族群多集中於北部，包括北投與士林地帶，或是最南邊的文山區老泉里。老泉里有一老泉養生休閒農場，而分群結果顯示出，該群的老年人口比例也確實較高，有許多溫泉的北投地區，具有較佳且步調相對較慢的生活環境，並且又保有便利的交通運輸系統，為老年人口普遍較聚集於此等地區的原因。已婚之高收入知識份子族群分布的地方相對於高扶老比族群，明顯以台北市中心地區為主，除了可以負擔較高的房價外，生活便利性較高且學區多明星學校可選擇亦為可能原因。用電量方面，由於老年人口生活較為節儉，且高收入的知識份子對於生活品質要求普遍較高，加上多座落於市中心地區，可能包含部分商辦地，使得用電量相對銀髮族群高。
+</pp>
+
+### 第3群(高) Vs 第4群(低)
+
+```{r}
+highchart() %>% 
+  hc_chart(polar = TRUE, type = "line") %>% 
+  hc_title(text = "第3群 vs 第4群") %>% 
+  hc_xAxis(categories = radar.name,
+           tickmarkPlacement = 'on',
+           lineWidth = 0) %>% 
+  hc_yAxis(gridLineInterpolation = 'polygon',
+           lineWidth = 0,
+           min = 0, max = 1) %>% 
+  hc_series(
+    list(
+      name = "第3群 - 高知識份子小康家庭族群",
+      data = radar.data[,c(4)],
+      pointPlacement = 'on',color=col.raw[3])
+    ,
+    list(
+      name = "第4群 - 低收入單身男性族群",
+      data = radar.data[,c(5)],
+      pointPlacement = 'on',color=col.raw[4]))
+```
+
+***
+
+<pp>由高知識份子小康家庭族群與低收入男性單身族群地理位置比較可以發現，前者主要分布於大安區、信義區等市中心的區域，後者主要分布於南港、萬華與北投等地區。除了地理位置明顯不同之外，各種指標上亦有明顯差異，高知識份子小康家庭族群平均用電量高於低收入男性單身族群，教育程度也有明顯的差異，但以區域面積可以發現低收入男性單身族群分佈較廣泛。相對第二群扶老比較高的高知識份子小康家庭族群，可能由於多與長輩同住，導致每戶人數相對較多，使得戶均用電量亦有所提升，且位於市中心的分布狀況可能也包含了商辦地區，相對於分散在台北市外圍區域的低收入男性單身族群而言，對於用電的需求相對提升許多。
+</pp>
+
+### 用電量地圖
+
+<iframe width="100%" height="520" frameborder="0" src="https://unityculturesheng.cartodb.com/viz/35497786-1716-11e6-bc60-0e3ff518bd15/embed_map" allowfullscreen webkitallowfullscreen mozallowfullscreen oallowfullscreen msallowfullscreen></iframe>
+
+### 分群地圖
+
+<iframe width="100%" height="520" frameborder="0" src="https://unityculturesheng.cartodb.com/viz/973a42ea-315b-11e6-b013-0e3a376473ab/embed_map" allowfullscreen webkitallowfullscreen mozallowfullscreen oallowfullscreen msallowfullscreen></iframe>
+
+相關性分析 {#eda .storyboard} 
+========
+
+### 綜合所得中位數 vs 每戶平均用電度數
+    
+```{r}
+cols <- c("1" = col.raw[1],
+          "2" = col.raw[2],
+          "3" = col.raw[3],
+          "4" = col.raw[4],
+          "5" = col.raw[5],
+          "6" = col.raw[6],
+          "7" = col.raw[7],
+          "8" = col.raw[8],
+          "9" = col.raw[9],
+          "10" = col.raw[10])
+data.f %>% 
+  left_join(data_cluster %>% select(id,cluster),
+            by = 'id') %>% 
+  ggplot(aes(x=綜合所得中位數,y=每戶平均用電度數,group=cluster,colour=cluster))+
+  geom_point(alpha=0.5,aes(text = paste('地區:',id )))+
+  stat_smooth(method = 'lm',formula = y ~ x,se=F,size=0.5,
+              aes(text=paste('分群:',cluster)))+
+  theme_bw(base_family = 'STHeiti')+
+  theme(plot.title = element_text(size=rel(1.3)),
+        axis.title.x = element_text(size = rel(2)),
+        axis.title.y = element_text(size = rel(2))) +
+  scale_colour_manual(values = cols) -> p1
+ggplotly(p1)
+```
+ 
+### 平均教育程度 vs 每戶平均用電度數
+    
+```{r}
+data.f %>% 
+  left_join(data_cluster %>% select(id,cluster),
+            by = 'id') %>%
+  ggplot(aes(x=平均教育程度,y=每戶平均用電度數,group=cluster,colour=cluster))+
+  geom_point(alpha=0.5,aes(text = paste('地區:',id )))+
+  stat_smooth(method = 'lm',formula = y ~ x,se=F,size=0.5,
+              aes(text=paste('分群:',cluster)))+
+  theme_bw(base_family = 'STHeiti')+
+  theme(plot.title = element_text(size=rel(1.3)),
+        axis.title.x = element_text(size = rel(2)),
+        axis.title.y = element_text(size = rel(2)))+
+  scale_colour_manual(values = cols)-> p2
+ggplotly(p2) 
+``` 
+
+
+### 有偶比例 vs 每戶平均用電度數
+    
+```{r}
+data.f %>% 
+  left_join(data_cluster %>% select(id,cluster),
+            by = 'id') %>%
+  ggplot(aes(x=有偶比例,y=每戶平均用電度數,group=cluster,colour=cluster))+
+  geom_point(alpha=0.5,aes(text = paste('地區:',id )))+
+  stat_smooth(method = 'lm',formula = y ~ x,se=F,size=0.5,
+              aes(text=paste('分群:',cluster)))+
+  theme_bw(base_family = 'STHeiti')+
+  theme(plot.title = element_text(size=rel(1.3)),
+        axis.title.x = element_text(size = rel(2)),
+        axis.title.y = element_text(size = rel(2)))+
+  scale_colour_manual(values = cols) -> p3
+ggplotly(p3)
+```
+    
+### 女男比 vs 每戶平均用電度數
+
+```{r}
+data.f %>% 
+  left_join(data_cluster %>% select(id,cluster),
+            by = 'id') %>%
+  ggplot(aes(x=女男比,y=每戶平均用電度數,group=cluster,colour=cluster))+
+  geom_point(alpha=0.5,aes(text = paste('地區:',id )))+
+  stat_smooth(method = 'lm',formula = y ~ x,se=F,size=0.5,
+              aes(text=paste('分群:',cluster)))+
+  theme_bw(base_family = 'STHeiti')+
+  theme(plot.title = element_text(size=rel(1.3)),
+        axis.title.x = element_text(size = rel(2)),
+        axis.title.y = element_text(size = rel(2)))+
+  scale_colour_manual(values = cols) -> p4
+ggplotly(p4)
+```
+
+結論與限制 {#Conclusion}
+======
+
+<div align = "center">
+<h1>這份分析有什麼特色？ </h1>
+</div>
+
+<ppp>本研究使用探索性資料分析(EDA)和分群方法做一個初步分析，針對北市各村里的用電量與人口特性做分群，根據各種不同的指標將台北市各村里定義為各種不同的集群，觀察與用電量之間的關聯。相較於過去文獻與報導大多以各地區電量高低的分析做報導，而本研究嘗試從**人口特徵**做出發，探究與用電量之間的關係。此外，亦使用統計分群方法針對不同輪廓的族群給予名稱，或許可協助政府在制定政策或幫助社會大眾更深一層了解北市的電力概況，以不同的角度去看台北市的電力分析。</ppp>
+
+<div align = "center">
+<h1>我們發現了什麼？ </h1>
+</div>
+
+<div align = "left">
+<h3>> 台北市如同一顆心臟，內外分布明顯</h3>
+</div>
+
+<ppp>外部用電量相較低：高扶老比族群多集中於北部北投與士林地帶、最南邊文山區老泉里、西邊萬華區，老年人口生活較為節儉，如：群一：高扶老比族群。
+內部用電量相較高：對於生活品質要求普遍較高，加上多座落於市中心地區，可能包含部分商辦地的用電，使得用電量相對銀髮族群高，如：群二、三。</ppp>
+
+<div align = "left">
+<h3>> 台北市女性比例較高的村里普遍用電量較高</h3>
+</div>
+
+<ppp>過去有相關文獻指出女性用電量較高，與本次分析所呈現的趨勢一致，而第五群的小資女族群集中分佈在中山區，而中山區為台北市黃金地段之一，眾多的商辦大樓亦可能為導致該群用電量較高的因素之一。
+</ppp>
+
+<div align = "left">
+<h3>> 用電大戶坐落於市中心、士林北投山區、內湖區元湖里</h3>
+</div>
+
+<ppp>市中心有許多商業辦公大樓，內湖元湖里有Costco、hola、家樂福、大潤發、特力屋等量販店，用電量高非常可能是因為資料為住商混合用電量所導致。期待未來台電提供住商分離的用電量資料，提供本研究進一步驗證，用電量高是否與此區的人口特性有所關連。
+</ppp>
+
+<div align = "center">
+<h1>有趣的族群輪廓</h1>
+</div>
+
+<ppp>屬於**用電量高**的群體(高於平均)：<br>
+　- 已婚之高收入知識份子族群<br>
+　- 高知識份子小康家庭族群<br>
+　- 單身小資女族群 </ppp><br>
+
+> 已婚之高收入知識份子族群：
+
+<ppp>根據分群結果顯示：第二群的指標特色主要以高教育程度、高所得、高有偶比等特徵為主，用電量高於平均，其與第三群輪廓相似，唯一顯著不同的地方在於其扶老比較低，故我們將此一族群推測為扶養壓力較小且教育程度高的已婚高收入知識份子族群。此群主要分布以內湖區為主，該群在內湖區的分布緊依內湖科技園區，許多人才與經濟能力較佳的家庭多居住於該地區，收入普遍較為豐厚，地點座落於一般住宅地區，非位於商辦地帶或繁華鬧區，用電量高於平均但與整體台北市平均。
+</ppp>
+
+
+> 高知識份子小康家庭族群：
+
+<ppp>此族群主要位於士林區翠山里、松山區精忠里、信義區新仁里、半個大安區與中正區南門里，特色在於其所得、教育程度皆明顯高於臺北市整體的平均指數。同時，些微高於平均的扶老比指數，亦可以凸顯這個族群有較高的能力去照顧家中的長輩。松山區精忠里，為全台灣[最有錢的里]，信義區新仁里及大安區等都是台北市生活品質與水準較高的村里，此群的用電量高於台北市整體平均用電，此指在臺北市各個生活品質高、教育機能亦不錯的地區有著高於平均的用電量？一般而言，高知識份子相對於社會議題會較關注，但在用電量上無法獲得佐證。
+</ppp>
+
+> 單身小資女族群
+
+<ppp>此族群分布於台北市中山區中，中山北路一段至三段的周圍鄰里，中山北路沿路上有許多商辦大樓，故此群用電量較高可能與其有關。此一區域的戶籍人口資料顯示女性多於男性，由於目前已有文獻證實，女性對於家電依賴性高於男性，又單身人數較多且收入相對較低，小資女們往往為了節省開銷而選擇自己開伙，且多數家電皆為高耗電量用品，使得此群的用電量相對其他群為最高。</ppp>
+
+<ppp>本文經由相關性分析發現，高知識份子小康家庭族群在女性越多的情況下與用電量的相關性越高，然而若有偶比例越高與用電量的關係則越趨下降，而在綜合所得與平均教育越高時與用電量的相關性亦呈現下降趨勢，在現今社會中，性別與用電量存在著關聯性，但若教育程度越高且所得也越高，則更能約束用電量的狀況，本文僅討論相關性，也希望能為未來的台灣社會盡一份力。</ppp>
+
+<div align = "center">
+<h1>資料限制</h1>
+</div>
+
+<ppp>
+**電力資料**：台電電力資料所記錄的用電量為住商混合用電量，無法清楚區隔在不同地區兩者間的差異大小。電力資料為月資料，但某些里在部分月份的用電量記錄為零，可能原因為目前台灣的電費計價方式為以雙月為單位，故必須將資料進行月份間的合併，才能較為確切的估算用電量狀況。<br><br>
+**經濟資料**：各村里綜合所得稅總和僅有2012年份的資料，本專案為了考量該村里的所得狀況，假設2012年與2014年個村裡綜合所得表現一致，進行推估。<br><br>
+**教育程度資料**：各村里教育程度資料僅有年資料，雖然沒有月資料，但教育程度不會因為月份不同而有太大的改變，因此我們將2012年的教育程度年資料作為月資料的推估。<br></ppp>
+
+
+<div align = "left">
+<h3>> 研究時間為何選擇2014？</h3>
+</div>
+
+<ppp>因不同資料的時間區間不相同，僅能擷取交集的部份進行分析，因2014年涵蓋最多資料，因此選擇2014年進行分析。</ppp>
+
+
+> 研究月份為何選擇7、8月？
+
+<ppp>因為7、8月長期以來為用電尖峰，電力短缺的問題在這時也較容易發生。在專案研究時間有限的情況下(辛苦的碩士生被指導教授追殺)，僅針對最急迫的月份著手分析。</ppp>
+
+> 為何選擇台北市？
+
+<ppp>我們所使用的人口相關資料為取自於政府所公布之戶籍統計資料，戶籍人口可能存在著籍在人不在的問題，由於台北市無論在就業機會與資訊發達的程度皆高，人才相對其他縣市更集中，故我們認為籍在人不在的問題影響力可以降到最低，故在現階段可以取得的有限資料下，我們選擇台北市作為首要分析的地區。</ppp>
+
+
+心得 {#Reviews}
+======
+
+Column {.tabset .tabset-fade}
+-------------------------------------
+
+### Lin心得碎碎念
+
+<ppp>首先非常感謝[DSP](https://dsp.im/) Data Lab這個專案，提供我們以Open Data進行資料科學實戰分析，以資料力關心及貢獻今年的熱門議題。第一次用Open Data進行分析，吃了很多閉門羹，在這邊將心路歷程簡單地分享給各位：</ppp>
+
+> **資料收集：**
+
+<ppp>在捲起袖子進行分析之前，首先，我們必須瞭解需要什麼資料？而通常這個問題的答案來自於研究問題本身。以本專案為例，希望找出用電量與人口特性之間的關聯，與用電量可能有關的包含：教育程度、經濟、人口結構等。接著，在針對這些人口特性去請教Google大神資料來源！若問題的定義不明確，很容易不清楚需要什麼資料、資料能夠回答什麼問題、甚至是用錯誤的資料來回答問題。</ppp>
+
+> **資料清理：**
+
+<ppp>資料清理上對於我來說不算太大的障礙。碩士班的研究使用的資料是全民健保資料庫，其特色除了又大又髒外、還是髒！兩年下來除了獲得碩士學位外，考到資料黑手的證照都不是問題了哈哈！回來正題，資料清理與整併大概僅花了我們40%的時間，簡單分享一個踩過地雷給大家：若以村里名稱作為合併的Key，需要特別小心中文字！(如：台北市萬華區的糖部里)，其餘的都只是很Tricky的清理方式了！</ppp>
+
+> **資料分析：分群方法的限制**
+
+<ppp>在使用統計方法前，EDA是非常重要的一個前置作業，EDA能使我們更加瞭解資料的輪廓。K-Means是分群方法中較簡單又容易理解，但是天下沒有白吃的午餐，K命斯也有致命傷。如：K-Means是以平方和計算距離，因此對於資料中的Outlier非常敏感，為了解決這個問題，我們嘗試使用Density-based Spatial Clustering，但此方法應用至此資料的分群結果並不理想(群與群之間的資料筆數差異過大)。最後解決的方法是，對每個變數做EDA，觀察分布情形，在針對右偏的變數取Log，降低Outlier的影響。</ppp>
+
+> **資料視覺化**：
+
+<ppp>找到適合的圖表、呈現方式，表達資訊給讀者也是一門學位。如果想要呈現的是空間上的分佈，如：各村里用電量，可以利用Cartodb來繪製。如果想要表達分群後在各個面向上的輪廓差異，可以使用以雷達圖的方式呈現，但維度不能過高(建議不要超過六個)，否則會造成資訊過於雜亂的狀況。如果想要呈現兩個維度之間的關聯性，散佈圖加上線性迴歸線是一個不錯的選擇，若要在加上第三個維度，可以選擇用顏色進行表示，但也要小心資訊太雜亂的問題！</ppp><br>
+
+<ppp>最後非常感謝我的好夥伴們，這份分析最大的功臣就是你們，GU、Alger辛苦的清理資料以外，還研究非常好用的Highcharter套件，很開心我們又再次合體了，除了一起被指導教授追殺論文外，還一起被Johnson與CK哥追殺Q_Q。</ppp>
+
+
+Sidebar {.sidebar}
+=======
+
+<pp>
+(建議使用Chrome瀏覽器)
+<h3>Hi All : </h3>
+
+我們是一群熱愛資料分析與統計方法的團隊。投入資料科學領域，參與社會公益是我們的願景，
+希望台灣會有更好的未來。
+
+若對此分析有任何建議，期望各界高手能夠提供寶貴的意見或是相關的資料給我們，一起創造資料價值。
+
+「台北市電力使用分析」是我們參加 [DSP智庫驅動](https://dsp.im) Data Labs所執行的資料分析專案。若有任何問題歡迎聯繫我們！
+
+__共同作者簡介:__
+
+1. [楊崇甫 ( Alger ) - <br>政大統計碩二](https://tw.linkedin.com/in/崇甫-楊-291242124)
+2. [陳昱霈 ( GU ) - <br>政大統計碩二](https://tw.linkedin.com/in/yu-pei-chen-b852ba110)
+3. [林敬昇 ( Lin ) - <br>政大統計碩二](https://tw.linkedin.com/in/lincingsheng)<br>
+4. [DSP Data Labs*](https://dsp.im/)
+
+
+</pp>
+
+<style type="text/css">
+
+pp {
+    font-size : 14px;
+    line-height: 25px;
+}
+
+ppp { 
+    font-size: 18px;
+    line-height: 35px;　　　          　/* 設定文字行距 */
+    letter-spacing: 6px;　            　/* 設定文字間距 */
+} 
+</style>
