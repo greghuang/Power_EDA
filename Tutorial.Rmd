@@ -1,0 +1,163 @@
+---
+title: '以R軟體進行Open Data分析 - 以北市用電量分析為例'
+author: "Lin、Alger、GU"
+date: "2016年8月3日"
+output:
+  html_document:
+    theme: united
+    fig_width: 10
+    fig_height: 7.5
+    toc : true
+    toc_depth: 4
+    toc_float: true
+
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = F)
+library(data.table)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+```
+
+
+# 資料處理篇
+
+> Note 1: 因為資料的時間涵蓋範圍不同，本研究取2014年進行分析(除所得資料未涵蓋，其他皆有）。
+
+> Note 2: 因各村里綜合所得稅總和僅有2012年份的資料，假設2012年與2014年個村裡綜合所得表現一致進行推估，與其他資料進行串檔。
+
+> Note 3: 各村里教育程度資料僅有年資料，雖然沒有月資料，但教育程度不會因為月份不同而有太大的改變，因此我們將2012教育程度年資料作為月資料的推估。
+
+> Note 4: 台電電力資料記錄住商混合用電量，期待未來台電能釋出住宅用電量的相關資料。
+
+
+- 讀入合併完的資料表
+
+```{r}
+data <- fread('iconv -f big5 -t utf8 ./20160426_data.csv')
+```
+
+## tmp資料解說
+
+我們預期整理出tmp這個`data.frame`, 會經過以下處理，得到我們所需與電力相關的指標所需的欄位。
+
+- `filter` : 挑選`201507~201508`月份的資料列
+- 產生與電力相關的指標：
+    - 經濟能力：綜合所得中位數_log
+    - 平均教育程度：教育程度（非義務教育就讀幾年，碩博設六年、大學設四年）
+    - 有偶比例：婚姻狀態（有偶人數/青年以上人數）
+    - 性別比：女性人數/男性人數
+    - 老人比例：扶老比_log（60歲以上的人口數/20~60歲人口數） 60up/(20~60)
+    - 用電量多寡：每戶平均用電量_log（取Log為解決右偏資料進行[0,1]標準化所碰到的問題）
+- `select` : 挑選與電力相關的指標所需的欄位即可
+- `mutate` : 產新與電力相關的指標所需的欄位
+- `select` : 僅挑選與電力相關的指標所需的欄位
+
+
+```{r}
+data %>% 
+  filter(統計年月 == c(10407)) %>% 
+  select(行政區域,每戶平均用電度數,女性比例, 男性比例,
+         少年人口比例,青年人口比例,壯年人口比例,老年人口比例,總人數,有偶人數,
+         綜合所得中位數, 大學以上比例, 大學比例, 大學以下比例) %>% 
+  mutate(扶老比 = (1-青年人口比例-壯年人口比例-少年人口比例)/(青年人口比例+壯年人口比例),
+         有偶比例 = 有偶人數/((1-少年人口比例)*總人數),
+         平均教育程度 = 大學以上比例*6+大學比例*4+大學以下比例*0,
+         女男比 = round(女性比例/男性比例,4),
+         每戶平均用電度數 = 每戶平均用電度數) %>% 
+  select(行政區域,綜合所得中位數,平均教育程度,有偶比例,女男比,扶老比,每戶平均用電度數) -> tmp
+head(tmp)
+```
+
+## tmp1資料解說
+
+我們預期整理出tmp1這個`data.frame`, 將各個欄位進行標準化。因為各個變數的單位不盡相同，因此在運用分群方法之前，[標準化](https://goo.gl/Ek2yit)是經常使用的[技巧之一](http://stats.stackexchange.com/questions/21222/are-mean-normalization-and-feature-scaling-needed-for-k-means-clustering)。
+
+
+- `mutate_each` : 除了`行政區域`以外，對每個欄位(變數)進行標準化(`scale()`)
+- `gather` : 將寬資料轉換成長資料，方便我們進行[0,1]標準化，以利於雷達圖做呈現。（越接近0代表越低，越接近1代表越高）
+
+```{r}
+
+tmp %>% 
+  mutate_each(funs(scale(.)),-行政區域) %>% 
+  gather('index','value',-行政區域) -> tmp1
+head(tmp1)
+```
+
+## tmp2資料解說
+
+我們預期整理出tmp2這個`data.frame`,按照不同的`Index`(剛剛轉換成長資料的步驟所產生的，一共有:綜合所得中位數、平均教育程度、有偶比例、女男比、扶老比、每戶平均用電度數 六個種類)，將`value`進行[0,1]標準化。
+
+
+- `group_by + mutate` : 依照`Index`不同種類，進行`mutate`中的動作。
+- `spread` : 為`gather`的反向操作，將長資料轉換成寬資料，
+
+```{r}
+tmp1 %>% 
+  group_by(index) %>% 
+  mutate(value = (value-min(value))/(max(value)-min(value))) -> tmp2
+head(tmp2)
+```
+
+## 觀察處理過後的變數，是否合理？(Single Variable Observation)
+
+通常，在套用統計模型之前，我們會先針對資料進行簡單的探索性資料分析(EDA)，掌握各個變數的樣貌與脈絡，避免將不合適的資料套用至統計方法內。
+
+其中我們會使用`ggplot2`這個強大的視覺化套件，
+
+`aes`為設定圖層的骨架，`geom_histogram`用來繪製直方圖，
+
+- `ggplot, aes` : 
+- `theme_grey` : 為避免中文顯示不正確的狀況，Mac需要設定中文字型！
+- `facet_wrap` : 按照index的種類，各自繪製直方圖。因為一共有6個種類，設定為 2 x 3 的大小。
+
+```{r}
+tmp2 %>% 
+  ggplot(aes(x=value)) +
+  geom_histogram() +
+  theme_grey(base_family = 'STHeiti') +
+  facet_wrap( ~ index, ncol = 3, nrow = 2)
+```
+
+## 偏態對[0,1]標準化的影響
+
+我們也發現到，變數有偏態的情形時，會對於雷達圖的呈現也些許的影響。
+
+以`每戶平均用電度數`為例，大於0.5的資料僅佔10%(49/456)，即便小於0.5還是代表用電量高的一群，如：雖然雷達圖上顯示在0.4 ~ 0.5之間，但還是屬於高用電量的一群。
+
+因此，透過EDA發現有右偏分布的變數，我們可以取`log`的方式給予調整。
+
+- 扶老比_log
+- 綜合所得中位數_log
+- 每戶平均用電度數_log
+
+看起來雖然還是沒有完全對稱，但是不是已經好多了？
+
+```{r}
+data %>% 
+  filter(統計年月 == c(10407)) %>% 
+  select(行政區域,每戶平均用電度數,
+         女性比例, 男性比例,
+         少年人口比例,青年人口比例,壯年人口比例,老年人口比例,總人數,有偶人數,
+         綜合所得中位數, 大學以上比例, 大學比例, 大學以下比例) %>% 
+  mutate(扶老比_log = log10((1-青年人口比例-壯年人口比例-少年人口比例)/(青年人口比例+壯年人口比例)),
+         有偶比例 = 有偶人數/((1-少年人口比例)*總人數),
+         平均教育程度 = 大學以上比例*6+大學比例*4+大學以下比例*0,
+         女男比 = round(女性比例/男性比例,4),
+         綜合所得中位數_log = log10(綜合所得中位數),
+         每戶平均用電度數_log = log10(每戶平均用電度數)) %>% 
+  select(行政區域,綜合所得中位數_log,平均教育程度,有偶比例,女男比,扶老比_log,每戶平均用電度數_log) %>%
+  mutate_each(funs(scale(.)),-行政區域) %>% 
+  gather('index','value',-行政區域) %>% 
+  group_by(index) %>% 
+  mutate(value = (value-min(value))/(max(value)-min(value))) %>% 
+  ggplot(aes(x=value)) +
+  geom_histogram() +
+  theme_grey(base_family = 'STHeiti') +
+  facet_wrap(~index)
+```
+
+
