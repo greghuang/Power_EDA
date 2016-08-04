@@ -1,0 +1,25 @@
+---
+title: '以R軟體進行Open Data分析 - 以北市用電量分析為例'
+author: "Lin、Alger、GU"
+date: "2016年8月3日"
+output:
+  html_document:
+    theme: united
+    fig_width: 10
+    fig_height: 7.5
+    toc : true
+    toc_depth: 4
+    toc_float: true
+
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = F)
+library(data.table)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+```
+
+
+# 資料合併篇
